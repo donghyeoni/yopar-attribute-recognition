@@ -1,0 +1,27 @@
+# 데이터셋 원본 — 용량 크고(500MB+, 8.7만 파일) 공개 데이터셋 재배포 조건상 커밋하지 않음.
+# data/README.md 참고
+data/*
+!data/README.md
+
+# 학습 가중치 — 가장 큰 파일이 90MB대라 git 커밋 히스토리에 안 맞음.
+# weights/README.md 참고
+weights/*
+!weights/README.md
+
+# 평가용 사전학습 YOLO — ultralytics가 최초 실행 시 자동 다운로드하므로 커밋 불필요
+yolo11n.pt
+
+# 평가 데이터셋 — 직접 라벨링한 비공개 테스트셋
+test_image/
+
+# 실행 중 생기는 산출물 — 코드가 아님
+eval_out/
+runtime/
+
+# 파이썬
+venv/
+__pycache__/
+*.pyc
+
+# Claude Code 세션/로컬 설정
+.claude/

@@ -1,0 +1,9 @@
+# CUDA 빌드가 필요하면 PyTorch 홈페이지(https://pytorch.org/get-started) 안내대로
+# torch/torchvision을 먼저 설치할 것 — pip 표준 배포는 CPU 전용 빌드라 GPU를 안 쓴다.
+torch>=2.13
+torchvision>=0.28
+numpy
+opencv-python
+pillow
+scipy
+ultralytics
