@@ -4,7 +4,7 @@ Market(8/9색·3헤드)든 PETA/통합(11색)이든, 소매 헤드 유무든 자
 test_image/ 사진을 YOLO로 사람 crop(EXIF 회전 보정) → 추론 → test_labels.csv와 대조.
 CSV에 'sleeve' 열이 있으면 소매도 채점(short/long).
 
-실행: python eval_color_par.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
+실행: python eval.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
 """
 
 import argparse

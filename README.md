@@ -14,7 +14,7 @@ PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA �
 │   ├── v4_multi_resnet50_sleeve.py # PETA+Market 통합, 4헤드(성별/상의/하의/소매) — 채택
 │   ├── v5_multi_resnet50_aug.py    # v4 + 강한 증강/샘플러 — 미채택
 │   └── TRAINING_LOG.md             # 버전별 학습 로그
-├── eval_color_par.py                # 평가 (팔레트·헤드 수 무관, 체크포인트 메타로 자동 대응)
+├── eval.py                          # 평가 (팔레트·헤드 수 무관, 체크포인트 메타로 자동 대응)
 ├── requirements.txt
 ├── data/                            # 데이터셋 (git에 없음, "데이터 준비" 참고)
 └── weights/                         # 학습 결과 (git에 없음, "가중치" 참고)
@@ -27,7 +27,7 @@ PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA �
   데이터셋 재배포 조건상 커밋하지 않는다 → 아래 "데이터 준비" 참고
 - **`weights/*.pt`, `*.onnx`**: 학습된 가중치. 가장 큰 파일이 90MB대라 git 커밋
   히스토리에 안 맞음 → [Releases](../../releases)로 배포
-- **`yolo11n.pt`**: `eval_color_par.py`가 test 이미지에서 사람을 crop하는 데 쓰는
+- **`yolo11n.pt`**: `eval.py`가 test 이미지에서 사람을 crop하는 데 쓰는
   사전학습 YOLO. ultralytics가 최초 실행 시 자동 다운로드하므로 커밋 불필요
 
 ## 설치
@@ -66,7 +66,7 @@ python train/v4_multi_resnet50_sleeve.py --backbone resnet50 \
 ## 평가
 
 ```bash
-python eval_color_par.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
+python eval.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
 ```
 
 직접 라벨링한 `test_image/` + `test_labels.csv`(레포에 없음)가 필요하다.
