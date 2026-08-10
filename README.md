@@ -14,6 +14,7 @@ Market-1501 + PETA 데이터셋으로
 │   ├── v4_multi_resnet50_sleeve.py # PETA+Market 통합, 4헤드(성별/상의/하의/소매) — 채택
 │   ├── v5_multi_resnet50_aug.py    # v4 + 강한 증강/샘플러 — 미채택
 │   └── TRAINING_LOG.md             # 버전별 학습 로그
+├── charts/                          # 성능 지표 차트 (버전 비교·혼동 행렬·클래스별 F1 등, 발표 자료용)
 ├── eval.py                          # 평가 (팔레트·헤드 수 무관, 체크포인트 메타로 자동 대응)
 ├── requirements.txt
 ├── data/                            # 데이터셋 (git에 없음, "데이터 준비" 참고)
