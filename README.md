@@ -1,4 +1,4 @@
-# YOPAR-classification
+# YOPAR
 
 인상착의 검색 서비스([YOPAR](https://github.com/donghyeoni/Detection_Based_on_Attribution))에 쓰이는
 PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA 데이터셋으로
