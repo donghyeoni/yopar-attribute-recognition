@@ -33,8 +33,8 @@ Market-1501 + PETA 데이터셋으로
 ## 설치
 
 ```bash
-git clone https://github.com/donghyeoni/YOPAR-classification.git
-cd YOPAR-classification
+git clone https://github.com/donghyeoni/YOPAR.git
+cd YOPAR
 pip install -r requirements.txt
 ```
 
