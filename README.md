@@ -1,6 +1,6 @@
-# YOPAR-detection
+# YOPAR-classification
 
-인상착의 검색 서비스([yopar](https://github.com/donghyeoni/Detection_Based_on_Attribution))에 쓰이는
+인상착의 검색 서비스([YOPAR](https://github.com/donghyeoni/Detection_Based_on_Attribution))에 쓰이는
 PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA 데이터셋으로
 성별 / 상의색 / 하의색 / 소매 길이(4속성)를 예측하는 분류기를 학습하고 평가한다.
 
@@ -33,8 +33,8 @@ PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA �
 ## 설치
 
 ```bash
-git clone https://github.com/donghyeoni/YOPAR-detection.git
-cd YOPAR-detection
+git clone https://github.com/donghyeoni/YOPAR-classification.git
+cd YOPAR-classification
 pip install -r requirements.txt
 ```
 
@@ -88,7 +88,7 @@ YOLO로 test 사진에서 사람을 crop한 뒤 추론해 실전과 같은 조�
 | v5 | v4 + 강한 증강/샘플러 | 0.80 | 0.67 | 0.87 | 1.00 | 0.835 |
 
 v5는 증강이 과해 파랑↔무채색 혼동이 늘어 채택하지 않았다. v4 가중치를 ONNX로 변환해
-[yopar](https://github.com/donghyeoni/Detection_Based_on_Attribution)에서 실제 서비스에 쓴다.
+[YOPAR](https://github.com/donghyeoni/Detection_Based_on_Attribution)에서 실제 서비스에 쓴다.
 
 ## 알려진 한계
 
