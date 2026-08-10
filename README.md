@@ -1,4 +1,4 @@
-# yopar-train
+# YOPAR-detection
 
 인상착의 검색 서비스([yopar](https://github.com/donghyeoni/Detection_Based_on_Attribution))에 쓰이는
 PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA 데이터셋으로
@@ -33,8 +33,8 @@ PAR(Pedestrian Attribute Recognition) 모델 학습 코드. Market-1501 + PETA �
 ## 설치
 
 ```bash
-git clone https://github.com/donghyeoni/yopar-train.git
-cd yopar-train
+git clone https://github.com/donghyeoni/YOPAR-detection.git
+cd YOPAR-detection
 pip install -r requirements.txt
 ```
 
