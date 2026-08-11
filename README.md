@@ -97,3 +97,8 @@ v5는 증강이 과해 파랑↔무채색 혼동이 늘어 채택하지 않았�
 - 희귀색(orange, pink) 학습 표본 부족
 - 학습셋(PETA/Market)과 실제 카메라의 도메인 차이 → 자체 카메라 crop 라벨링 후
   파인튜닝이 정확도 개선에 가장 효과적
+
+## Contributors
+
+- [donghyeoni](https://github.com/donghyeoni)
+- [tttksj (tttksj404)](https://github.com/tttksj404)
