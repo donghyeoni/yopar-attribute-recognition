@@ -34,8 +34,8 @@ Market-1501 + PETA 데이터셋으로
 ## 설치
 
 ```bash
-git clone https://github.com/donghyeoni/YOPAR.git
-cd YOPAR
+git clone https://github.com/donghyeoni/yopar-attribute-recognition.git
+cd yopar-attribute-recognition
 pip install -r requirements.txt
 ```
 
