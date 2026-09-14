@@ -21,11 +21,14 @@ flowchart LR
     CORE -->|"실시간 AI 분석 작업 등록"| MQ1{{"RabbitMQ"}}
     MQ1 -->|"작업 해결"| JETSON
 
+    JETSON -->|"실시간 발견 위치<br/>(바운딩 박스 좌표) 등록"| CORE
+    JETSON -->|"탐지 이미지<br/>(crop·프레임) 업로드"| STORAGE
+
     CORE -->|"녹화본 AI 분석 작업 등록"| MQ2{{"RabbitMQ"}}
     MQ2 -->|"작업 해결"| WORKER["AI 분석 워커<br/>(외부 GPU 공간)"]
 
     WORKER -->|"분석할 녹화본 접근"| STORAGE
-    WORKER -->|"실종자 발견 위치<br/>(바운딩 박스 좌표) 등록"| CORE
+    WORKER -->|"녹화본 발견 위치<br/>(바운딩 박스 좌표) 등록"| CORE
 
     CORE -->|"신고자 화면 제공"| REPORTER["신고자 화면"]
     CORE -->|"관리자 화면 제공"| ADMIN["관리자 대시보드"]
