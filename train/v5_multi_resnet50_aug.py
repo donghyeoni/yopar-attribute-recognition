@@ -1,16 +1,3 @@
-"""v5 학습 — v4와 같은 데이터(PETA+Market), 학습 레시피만 개선.
-
-v4 대비 변경점:
-  1) 색 증강: ColorJitter(brightness/contrast/saturation) — hue는 라벨이므로 건드리지 않음
-     + RandomErasing(가림 강건성)
-  2) 희귀색·여성 오버샘플링: WeightedRandomSampler (희귀 상/하의색, 여성 비중↑)
-  3) 40 epoch + cosine LR 스케줄
-  4) 헤드 4개 유지(성별/상의색/하의색/소매)
-
-실행: python train/v5_multi_resnet50_aug.py
-결과: weights/color_par_v5_multi_resnet50_aug.pt
-"""
-
 import argparse
 import os
 import random
@@ -39,13 +26,11 @@ class DS(Dataset):
 
 
 def make_sampler(items):
-    """희귀 색상 + 여성 비중을 올리는 샘플 가중치."""
     n_c = len(COLORS)
     up_cnt = np.bincount([it[2] for it in items], minlength=n_c).astype(float)
     dn_cnt = np.bincount([it[3] for it in items], minlength=n_c).astype(float)
     g_cnt = np.bincount([it[1] for it in items], minlength=2).astype(float)
     up_cnt[up_cnt == 0] = 1; dn_cnt[dn_cnt == 0] = 1; g_cnt[g_cnt == 0] = 1
-    # 역빈도 기반(제곱근으로 완화) 가중치 결합
     w_up = 1.0 / np.sqrt(up_cnt)
     w_dn = 1.0 / np.sqrt(dn_cnt)
     w_g = 1.0 / np.sqrt(g_cnt)
@@ -76,7 +61,6 @@ def main():
     print(f"[v5] images {len(items)} / train {len(tr)} / val {len(va)} / {device}")
 
     H, W = INPUT_HW
-    # 색 증강: hue는 제외(라벨이 색). 밝기/대비/채도만 흔든다.
     tfm_tr = T.Compose([
         T.Resize((H, W)),
         T.RandomHorizontalFlip(),
@@ -102,7 +86,6 @@ def main():
         cnt[cnt == 0] = 1
         return torch.tensor(cnt.sum() / (n * cnt), dtype=torch.float32, device=device)
 
-    # 샘플러가 이미 균형을 잡으므로 손실 가중은 약하게(sqrt)
     def soft_w(idx, n):
         w = cls_w(idx, n)
         return w.sqrt()

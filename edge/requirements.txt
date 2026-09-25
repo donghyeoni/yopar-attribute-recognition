@@ -1,0 +1,5 @@
+onnxruntime-gpu==1.24.0
+pika==1.4.2
+flatbuffers==25.12.19
+coloredlogs==15.0.1
+humanfriendly==10.0

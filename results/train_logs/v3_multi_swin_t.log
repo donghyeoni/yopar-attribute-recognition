@@ -1,0 +1,28 @@
+[multi] PETA+Market 통합 이미지 31922 / backbone swin_t / cuda
+[multi] train 28558 / val 3364 (인물 9442명)
+  ep   1  gender 0.758  upper 0.688  lower 0.704  mean 0.717
+  ep   2  gender 0.858  upper 0.680  lower 0.585  mean 0.708
+  ep   3  gender 0.842  upper 0.590  lower 0.551  mean 0.661
+  ep   4  gender 0.825  upper 0.707  lower 0.671  mean 0.734
+  ep   5  gender 0.860  upper 0.726  lower 0.691  mean 0.759
+  ep   6  gender 0.874  upper 0.690  lower 0.651  mean 0.738
+  ep   7  gender 0.868  upper 0.700  lower 0.725  mean 0.764
+  ep   8  gender 0.865  upper 0.684  lower 0.669  mean 0.739
+  ep   9  gender 0.870  upper 0.714  lower 0.732  mean 0.772
+  ep  10  gender 0.856  upper 0.701  lower 0.721  mean 0.760
+  ep  11  gender 0.861  upper 0.716  lower 0.675  mean 0.751
+  ep  12  gender 0.867  upper 0.717  lower 0.716  mean 0.767
+  ep  13  gender 0.867  upper 0.722  lower 0.717  mean 0.769
+  ep  14  gender 0.859  upper 0.709  lower 0.718  mean 0.762
+  ep  15  gender 0.870  upper 0.702  lower 0.712  mean 0.761
+  ep  16  gender 0.864  upper 0.680  lower 0.735  mean 0.760
+  ep  17  gender 0.864  upper 0.751  lower 0.744  mean 0.786
+  ep  18  gender 0.869  upper 0.729  lower 0.748  mean 0.782
+  ep  19  gender 0.870  upper 0.694  lower 0.719  mean 0.761
+  ep  20  gender 0.862  upper 0.695  lower 0.750  mean 0.769
+  ep  21  gender 0.869  upper 0.676  lower 0.697  mean 0.747
+  ep  22  gender 0.864  upper 0.704  lower 0.694  mean 0.754
+  ep  23  gender 0.856  upper 0.724  lower 0.712  mean 0.764
+  ep  24  gender 0.862  upper 0.731  lower 0.722  mean 0.772
+  ep  25  gender 0.855  upper 0.702  lower 0.715  mean 0.757
+[multi] 완료. best mean_acc=0.786 -> weights/color_par_multi_swin_t.pt

@@ -1,14 +1,3 @@
-"""색상+소매 PAR 학습 (v4) — PETA + Market-1501 통합(11색), 4헤드.
-헤드: 성별 / 상의색(11) / 하의색(11) / 소매(short,long).
-백본 선택(resnet50 / swin_t). 인물 단위 val 분할, 클래스 가중.
-
-주의: weights/color_par_v3_multi_resnet50.*는 이 파일에 소매 헤드를 추가하기 전
-(3헤드) 버전의 결과물이라 지금 이 스크립트로는 재현되지 않는다.
-
-실행:
-  python train/v4_multi_resnet50_sleeve.py --backbone resnet50 --out weights/color_par_v4_multi_resnet50_sleeve.pt
-"""
-
 import argparse
 import glob
 import os
@@ -104,10 +93,10 @@ def build_market():
     gender = col("gender")
     up = np.stack([col(f) for f in MK_UP_F], axis=1)
     dn = np.stack([col(f) for f in MK_DN_F], axis=1)
-    uplen = col("up")   # 1=long, 2=short
+    uplen = col("up")
     lab = {}
     for i, pid in enumerate(ids):
-        sl = 0 if int(uplen[i]) == 2 else 1     # short=0, long=1
+        sl = 0 if int(uplen[i]) == 2 else 1
         lab[pid] = (int(gender[i] - 1),
                     CIDX[MK_UP[int(up[i].argmax())]],
                     CIDX[MK_DN[int(dn[i].argmax())]], sl)

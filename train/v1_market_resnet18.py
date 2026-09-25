@@ -1,11 +1,3 @@
-"""색상 PAR 학습 (독립 실행). Market-1501 attribute로 성별/상의색/하의색 학습.
-결과 weights/color_par.pt 를 Jetson 추론에 사용.
-
-실행(venv):
-  python train/v1_market_resnet18.py
-  python train/v1_market_resnet18.py --backbone resnet50 --epochs 30
-"""
-
 import argparse
 import glob
 import os

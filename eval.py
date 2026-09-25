@@ -1,12 +1,3 @@
-"""색상(+소매) PAR 평가 (팔레트·헤드수 무관). 체크포인트 메타를 읽어
-Market(8/9색·3헤드)든 PETA/통합(11색)이든, 소매 헤드 유무든 자동 대응.
-
-test_image/ 사진을 YOLO로 사람 crop(EXIF 회전 보정) → 추론 → test_labels.csv와 대조.
-CSV에 'sleeve' 열이 있으면 소매도 채점(short/long).
-
-실행: python eval.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
-"""
-
 import argparse
 import csv
 import os

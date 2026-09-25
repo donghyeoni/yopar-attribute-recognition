@@ -1,0 +1,6 @@
+version,setup,images,gender,upper,lower,sleeve
+v1,"Market, resnet18",15,0.73,0.53,0.73,
+v2,"PETA, resnet50 (11 colors)",15,0.93,0.47,0.87,
+v3,PETA+Market,15,0.87,0.53,1.00,
+v4,PETA+Market + sleeve,15,0.87,0.80,0.87,1.00
+v5,v4 + strong augmentation/sampler,15,0.80,0.67,0.87,1.00

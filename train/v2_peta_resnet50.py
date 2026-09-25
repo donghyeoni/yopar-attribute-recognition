@@ -1,15 +1,3 @@
-"""색상 PAR 학습 (PETA, 11색 + red 하의 포함). 성별/상의색/하의색 다중헤드.
-
-PETA 원본(각 subset의 archive/Label.txt)을 파싱해 학습.
-색 11종: black blue brown green gray orange pink purple red white yellow
-(하의도 red 포함 → "빨간 바지" 검색 가능)
-
-실행(venv):
-  python train/v2_peta_resnet50.py
-  python train/v2_peta_resnet50.py --backbone resnet18 --epochs 30
-결과: weights/color_par_peta.pt
-"""
-
 import argparse
 import glob
 import os
@@ -24,7 +12,6 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
 GENDERS = ["male", "female"]
-# PETA 색 토큰 -> 표준(소문자, grey->gray)
 COLOR_TOK = ["Black", "Blue", "Brown", "Green", "Grey", "Orange", "Pink",
              "Purple", "Red", "White", "Yellow"]
 COLORS = ["black", "blue", "brown", "green", "gray", "orange", "pink",
@@ -61,7 +48,6 @@ def parse_attrs(tokens):
 
 
 def build_items():
-    """(path, gender, up, down, group) 리스트. 색·성별 모두 있는 것만."""
     items = []
     for label_txt in glob.glob(os.path.join(PETA_ROOT, "*", "archive", "Label.txt")):
         subset = label_txt.split(os.sep)[-3]
@@ -118,7 +104,6 @@ def main():
         print("PETA 데이터를 못 찾음. data/PETA dataset/ 확인.")
         return
 
-    # 인물(group) 단위 val 분할 → 누수 방지
     groups = sorted({it[4] for it in items})
     random.Random(0).shuffle(groups)
     n_val_g = max(1, int(len(groups) * args.val_split))
@@ -139,7 +124,6 @@ def main():
     model = ColorPARNet(args.backbone, pretrained=True).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
-    # 색 불균형 보정: 클래스 가중(역빈도). 희귀색(red 하의 등) 인식↑
     def cls_w(idx, n):
         cnt = np.bincount([it[idx] for it in tr_items], minlength=n).astype(float)
         cnt[cnt == 0] = 1

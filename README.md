@@ -1,14 +1,11 @@
 # YOPAR
 
-인상착의 검색에 쓰이는 PAR(Pedestrian Attribute Recognition) 모델 학습 코드.
-Market-1501 + PETA 데이터셋으로
-성별 / 상의색 / 하의색 / 소매 길이(4속성)를 예측하는 분류기를 학습하고 평가한다.
+CCTV 기반 실종자 수색 시스템에서 **실시간 AI 처리 장치(Jetson Orin Nano)** 파트다. 사람을 검출해 잘라낸 이미지에서
+성별, 상의색, 하의색, 소매 길이 4속성을 예측하는 PAR(Pedestrian Attribute Recognition) 모델과, 이 모델로 카메라
+4대의 영상을 실시간 분석해 서버가 등록한 인상착의와 대조하는 Jetson 서비스를 담는다. 설정·정의와 전체 결과는
+[`docs/experiment-log.md`](docs/experiment-log.md)(이하 로그)에 있다.
 
 ## 전체 시스템 개요
-
-YOPAR는 CCTV 기반 실종자 수색 시스템 전체 중 **실시간 AI 처리 장치(Jetson Orin Nano)**
-파트다. 이 레포에는 그 장치에서 돌아가는 인상착의(속성) 인식 모델의 학습·평가 코드만
-담겨 있다. 모델이 어디에 얹히는지 알 수 있도록 전체 구조를 먼저 적어둔다.
 
 ```mermaid
 flowchart LR
@@ -37,122 +34,63 @@ flowchart LR
     class JETSON mine;
 ```
 
-> 노란색 블록(실시간 AI 처리 장치)이 YOPAR가 맡은 파트다.
+> 노란색 블록(실시간 AI 처리 장치)이 이 레포가 맡은 파트다.
 
-| 구성 요소 | 역할 |
-|---|---|
-| CCTV (4채널) | 현장 영상 소스 |
-| 미디어 서버 (Raspberry Pi 5) | CCTV 수집 → Jetson에 실시간 스트림 전달, 1분 세그먼트 녹화본을 스토리지에 업로드, 녹화본 메타데이터를 중앙 서버에 등록 |
-| 중앙 서버 | 신고 접수·화면 제공, 실시간/녹화본 분석 작업을 RabbitMQ에 등록, 발견 결과 저장 |
-| RabbitMQ | 실시간 경로와 녹화본 경로로 분리된 분석 작업 큐 |
-| **실시간 AI 처리 장치 (Jetson Orin Nano)** | **YOPAR가 맡은 파트.** 실시간 스트림 온디바이스 추론 (사람 탐지 + 인상착의 인식) |
-| AI 분석 워커 (외부 GPU 공간) | 스토리지의 과거 녹화본을 내려받아 배치 분석, 발견 위치(바운딩 박스 좌표)를 중앙 서버에 등록 |
-| 영상 스토리지 (S3 / MinIO) | 1분 세그먼트 녹화본 보관 |
-| 신고자 화면 / 관리자 대시보드 | 신고 접수 및 수색 결과 조회 |
+| 폴더 | 내용 |
+| --- | --- |
+| `train/`, `eval.py` | PAR 모델 학습(v1, v2, v4, v5), 검증셋 지표, 자체 사진 평가 |
+| `edge/` | Jetson 서비스: RTSP 카메라 4대 → YOLO11 사람 검출 → PAR(v4) → 인상착의 매칭 → 서버 전송 |
+| `results/` | 학습 로그, v4 검증셋 지표, 자체 사진 결과, 요약 표·그림 |
 
-### 이 레포가 맡는 부분
+## 결과
 
-실시간 AI 처리 장치(Jetson Orin Nano) 위에서, 사람 탐지로 잘라낸 crop 한 장에서
-**성별 / 상의색 / 하의색 / 소매 길이** 4속성을 예측한다. 신고자가 입력한 인상착의와
-이 예측값을 대조해 실시간으로 후보를 좁히는 것이 목적이다. 학습된 v4 가중치를 ONNX로
-변환해 Jetson 추론 파이프라인에 올린다.
+### 버전별 모델 (자체 사진 15장)
 
-이 레포에 있는 것은 그 모델의 **학습·평가 코드**이고, Jetson 배포·스트림 연동 코드는
-포함되어 있지 않다.
+<table>
+<tr>
+<td>
 
-## 레포 구조
+| 버전 | 데이터 | 성별 | 상의 | 하의 | 소매 | 평균 |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| v1 | Market | 11/15 | 8/15 | 11/15 | – | 0.6667 |
+| v2 | PETA | 14/15 | 7/15 | 13/15 | – | 0.7556 |
+| v3 | PETA+Market | 13/15 | 8/15 | 15/15 | – | 0.8000 |
+| **v4** | PETA+Market | 13/15 | **12/15** | 13/15 | 15/15 | **0.8833** |
+| v5 | PETA+Market | 12/15 | 10/15 | 13/15 | 15/15 | 0.8333 |
 
-```
-.
-├── train/
-│   ├── v1_market_resnet18.py       # Market, resnet18
-│   ├── v2_peta_resnet50.py         # PETA, resnet50, 11색
-│   ├── v4_multi_resnet50_sleeve.py # PETA+Market 통합, 4헤드(성별/상의/하의/소매) — 채택
-│   ├── v5_multi_resnet50_aug.py    # v4 + 강한 증강/샘플러 — 미채택
-│   └── TRAINING_LOG.md             # 버전별 학습 로그
-├── charts/                          # 성능 지표 차트 (버전 비교·혼동 행렬·클래스별 F1 등, 발표 자료용)
-├── eval.py                          # 평가 (팔레트·헤드 수 무관, 체크포인트 메타로 자동 대응)
-├── requirements.txt
-├── data/                            # 데이터셋 (git에 없음, "데이터 준비" 참고)
-└── weights/                         # 학습 결과 (git에 없음, "가중치" 참고)
-```
+v4부터 소매 헤드가 있고, v5는 v4에 증강과<br>샘플러를 더했다. Jetson 서비스는 v4를 쓴다.
 
-`data/`, `weights/*.pt`, `weights/*.onnx`, `yolo11n.pt`는 git에 커밋하지 않는다
-(`.gitignore` 참고).
+</td>
+<td><img src="results/summary/test15.png" alt="그림 1" width="520"></td>
+</tr>
+</table>
 
-- **`data/`**: Market-1501 + PETA 원본 이미지 87,000여 장. 용량이 크고(500MB+) 공개
-  데이터셋 재배포 조건상 커밋하지 않는다 → 아래 "데이터 준비" 참고
-- **`weights/*.pt`, `*.onnx`**: 학습된 가중치. 가장 큰 파일이 90MB대라 git 커밋
-  히스토리에 안 맞음 → [Releases](../../releases)로 배포
-- **`yolo11n.pt`**: `eval.py`가 test 이미지에서 사람을 crop하는 데 쓰는
-  사전학습 YOLO. ultralytics가 최초 실행 시 자동 다운로드하므로 커밋 불필요
+### v4 검증셋 (3,359장)
 
-## 설치
+<table>
+<tr>
+<td>
 
-```bash
-git clone https://github.com/donghyeoni/yopar-attribute-recognition.git
-cd yopar-attribute-recognition
-pip install -r requirements.txt
-```
+| 속성 | 정확도 | top-2 |
+| :--- | ---: | ---: |
+| 성별 | 0.8815 | – |
+| 상의색 | 0.7264 | 0.8604 |
+| 하의색 | 0.7210 | 0.8776 |
+| 소매 | 0.9574 | – |
+| 4속성 평균 | 0.8216 | – |
+| 4속성 모두 정답 | 0.4701 | – |
 
-torch/torchvision은 `requirements.txt`에 버전만 적어뒀다. CUDA 빌드가 필요하면
-[PyTorch 홈페이지](https://pytorch.org/get-started) 안내대로 먼저 설치할 것
-(pip 표준 배포는 CPU 전용 빌드).
+</td>
+<td><img src="results/summary/v4_confusion.png" alt="그림 2" width="620"></td>
+</tr>
+</table>
 
-## 데이터 준비
+- 상의 gray는 568장 중 126장을 black, 104장을 white로 예측했다.
 
-`data/` 아래에 다음 구조로 배치한다 (자세한 내용은 [data/README.md](data/README.md)):
+## 기타
 
-```
-data/
-├── Market-1501-v15.09.15/
-├── Market-1501_Attribute/
-└── PETA dataset/
-```
-
-## 학습
-
-```bash
-python train/v4_multi_resnet50_sleeve.py --backbone resnet50 \
-    --out weights/color_par_v4_multi_resnet50_sleeve.pt
-```
-
-주요 옵션: `--epochs`(25) `--batch`(64) `--lr`(3e-4) `--val-split`(0.1, 인물 단위 분할).
-다른 버전은 `train/` 안의 각 스크립트 docstring에 실행 예시가 있다.
-
-## 평가
-
-```bash
-python eval.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
-```
-
-직접 라벨링한 `test_image/` + `test_labels.csv`(레포에 없음)가 필요하다.
-YOLO로 test 사진에서 사람을 crop한 뒤 추론해 실전과 같은 조건으로 평가한다.
-
-## 가중치
-
-미리 학습된 체크포인트는 커밋하지 않고 [Releases](../../releases)에 올려둔다.
-목록·용도는 [weights/README.md](weights/README.md) 참고.
-
-## 모델 비교 (test 15장, 남9/여6)
-
-| 버전 | 구성 | 성별 | 상의 | 하의 | 소매 | 평균 |
-|---|---|---|---|---|---|---|
-| v1 | Market, resnet18 | 0.73 | 0.53 | 0.73 | — | 0.67 |
-| v2 | PETA, resnet50 (11색) | 0.93 | 0.47 | 0.87 | — | 0.76 |
-| v3 | PETA+Market | 0.87 | 0.53 | 1.00 | — | 0.80 |
-| **v4 (채택)** | PETA+Market + 소매 | 0.87 | 0.80 | 0.87 | 1.00 | **0.885** |
-| v5 | v4 + 강한 증강/샘플러 | 0.80 | 0.67 | 0.87 | 1.00 | 0.835 |
-
-v5는 증강이 과해 파랑↔무채색 혼동이 늘어 채택하지 않았다. v4 가중치를 ONNX로 변환해
-실제 서비스에 쓴다.
-
-## 알려진 한계
-
-- 경계색 혼동: 진회색↔검정, maroon↔pink/red, 파스텔 핑크↔흰색
-- 희귀색(orange, pink) 학습 표본 부족
-- 학습셋(PETA/Market)과 실제 카메라의 도메인 차이 → 자체 카메라 crop 라벨링 후
-  파인튜닝이 정확도 개선에 가장 효과적
+- 학습된 가중치(v1–v5 `.pt`, v3·v4 `.onnx`)는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
+- 버전별 학습 곡선과 클래스별 지표는 [로그](docs/experiment-log.md)에 있다.
 
 ## Contributors
 

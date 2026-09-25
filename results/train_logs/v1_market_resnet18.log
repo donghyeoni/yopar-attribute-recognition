@@ -1,0 +1,23 @@
+[train] identity 751 / images 12936 / device cuda
+[train] train 11643 / val 1293
+  ep   1  gender 0.910  upper 0.858  lower 0.825  mean 0.865
+  ep   2  gender 0.922  upper 0.881  lower 0.853  mean 0.885
+  ep   3  gender 0.934  upper 0.911  lower 0.870  mean 0.905
+  ep   4  gender 0.940  upper 0.927  lower 0.893  mean 0.920
+  ep   5  gender 0.944  upper 0.922  lower 0.899  mean 0.921
+  ep   6  gender 0.949  upper 0.921  lower 0.912  mean 0.927
+  ep   7  gender 0.960  upper 0.932  lower 0.886  mean 0.926
+  ep   8  gender 0.947  upper 0.930  lower 0.904  mean 0.927
+  ep   9  gender 0.942  upper 0.936  lower 0.909  mean 0.929
+  ep  10  gender 0.951  upper 0.926  lower 0.901  mean 0.926
+  ep  11  gender 0.960  upper 0.913  lower 0.902  mean 0.925
+  ep  12  gender 0.953  upper 0.922  lower 0.891  mean 0.922
+  ep  13  gender 0.954  upper 0.935  lower 0.885  mean 0.924
+  ep  14  gender 0.937  upper 0.930  lower 0.890  mean 0.919
+  ep  15  gender 0.954  upper 0.921  lower 0.890  mean 0.922
+  ep  16  gender 0.952  upper 0.927  lower 0.888  mean 0.922
+  ep  17  gender 0.948  upper 0.933  lower 0.891  mean 0.924
+  ep  18  gender 0.959  upper 0.944  lower 0.908  mean 0.937
+  ep  19  gender 0.950  upper 0.949  lower 0.933  mean 0.944
+  ep  20  gender 0.961  upper 0.943  lower 0.914  mean 0.939
+[train] 완료. best mean_acc=0.944 -> weights/color_par_v1_market_resnet18.pt
