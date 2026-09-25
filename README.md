@@ -89,7 +89,7 @@ v4부터 소매 헤드가 있고, v5는 v4에 증강과<br>샘플러를 더했�
 
 ## 기타
 
-- 학습된 가중치(v1–v5 `.pt`, v3·v4 `.onnx`)는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
+- 학습된 가중치(v1–v5 `.pt`, v3·v4 `.onnx`)와 Jetson 서비스용 `yolo11s.onnx`는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
 - 버전별 학습 곡선과 클래스별 지표는 [로그](docs/experiment-log.md)에 있다.
 
 ## Contributors
