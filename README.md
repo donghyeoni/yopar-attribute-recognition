@@ -1,11 +1,11 @@
 # YOPAR
 
-CCTV 기반 실종자 수색 시스템에서 **실시간 AI 처리 장치(Jetson Orin Nano)** 파트다. 사람을 검출해 잘라낸 이미지에서
-성별, 상의색, 하의색, 소매 길이 4속성을 예측하는 PAR(Pedestrian Attribute Recognition) 모델과, 이 모델로 카메라
-4대의 영상을 실시간 분석해 서버가 등록한 인상착의와 대조하는 Jetson 서비스를 담는다. 설정·정의와 전체 결과는
-[`docs/experiment-log.md`](docs/experiment-log.md)(이하 로그)에 있다.
+CCTV 기반 실종자 수색 시스템의 **실시간 AI 처리 장치(Jetson Orin Nano)** 서비스다. 라즈베리파이5 미디어 서버의
+RTSP 카메라 4대 영상에서 사람을 검출하고 성별·상의색·하의색·소매 길이를 인식해, 중앙 서버가 등록한 인상착의와
+맞는 사람의 위치와 증거 사진을 후보 이벤트로 서버에 올린다. 서비스를 위해 한 조치·최적화와 모델 결과는
+[`docs/service-log.md`](docs/service-log.md)(이하 로그)에 있다.
 
-## 전체 시스템 개요
+## 시스템 개요
 
 ```mermaid
 flowchart LR
@@ -36,61 +36,98 @@ flowchart LR
 
 > 노란색 블록(실시간 AI 처리 장치)이 이 레포가 맡은 파트다.
 
+## 동작
+
+1. 카메라별 최신 프레임을 모아 YOLO11s로 한 번에 사람을 검출한다.
+2. PAR(v4)로 4속성을 인식한다. 같은 사람은 결과를 12프레임 동안 재사용하고, 그 뒤에 다시 인식한다.
+3. 전신이 보이는 사람만, 서버의 검색 대상(인상착의)과 점수 0.25 이상으로 맞으면 후보로 고른다.
+4. 사람(트랙)마다 2초 동안 점수·크기·선명도로 가장 좋은 사진 1장을 골라 업로드하고 후보 이벤트를 등록한다.
+
 | 폴더 | 내용 |
 | --- | --- |
-| `train/`, `eval.py` | PAR 모델 학습(v1, v2, v4, v5), 검증셋 지표, 자체 사진 평가 |
-| `edge/` | Jetson 서비스: RTSP 카메라 4대 → YOLO11 사람 검출 → PAR(v4) → 인상착의 매칭 → 서버 전송 |
-| `results/` | 학습 로그, v4 검증셋 지표, 자체 사진 결과, 요약 표·그림 |
+| `edge/` | Jetson 서비스 (`scripts/`, `run_yopar.sh`, `.env.example`, `requirements.txt`) |
+| `train/`, `eval.py` | PAR 모델 학습(v1, v2, v4, v5)·검증 지표·자체 사진 평가 |
+| `results/`, `tools/` | 학습 로그와 지표, 요약 표·그림과 그 생성 스크립트 |
 
-## 결과
+## 사용 방법
 
-### 버전별 모델 (자체 사진 15장)
+### Jetson 서비스
+
+**1. 설치.** JetPack에 포함된 `cv2`, `numpy`, `requests`는 그대로 쓰고, 나머지만 설치한다.
+`onnxruntime-gpu`는 Jetson(aarch64)용 wheel이 필요하다. 일반 wheel은 GPU 없이 CPU로만 돈다.
+
+```bash
+pip install -r edge/requirements.txt
+```
+
+**2. 모델.** [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases/tag/weights)에서 두 파일을 받아
+`edge/models/`에 넣는다.
+
+- `yolo11s.onnx`
+- `color_par_v4_multi_resnet50_sleeve.onnx`
+
+**3. TensorRT 엔진 빌드 (기기마다 한 번).** 브라우저·VS Code 등 GPU 메모리를 쓰는 프로그램을 끄고 실행한다.
+fp16과 fp32 결과를 비교해 모델별로 쓸 방식을 `edge/models/provider_verdict.json`에 저장한다.
+샘플 이미지 `edge/samples/bus.jpg`가 필요하다(레포에 없음).
+
+```bash
+python3 edge/scripts/prepare.py
+```
+
+**4. 설정.**
+
+- `edge/.env.example`을 `edge/.env`로 복사하고(`chmod 600`) RTSP·RabbitMQ 계정과 서버 주소
+  (`YOPAR_API_BASE`, `YOPAR_MQ_HOST`)를 채운다. `YOPAR_MQ_PORT`, `YOPAR_MQ_VHOST`는 비우면 5672, `/`이다.
+- 디바이스 인증키를 `edge/devicekey.txt`에 한 줄로 넣는다(실행 중 교체해도 반영된다).
+- 카메라 서버 주소 `PI5_IP`(`edge/scripts/capture_core.py`)와 모니터링 PC 주소 `PC_IP`
+  (`edge/scripts/jetson_par_sender.py`)는 코드 상수라 직접 채운다.
+
+**5. 실행.** 이미 실행 중이면 새로 띄우지 않고 기존 것을 끌지 묻는다.
+
+```bash
+bash edge/run_yopar.sh
+```
+
+### 모델 학습·평가
+
+Market-1501, Market-1501_Attribute, PETA를 `data/` 아래에 두고 레포 루트에서 실행한다.
+
+```bash
+pip install -r requirements.txt
+python train/v4_multi_resnet50_sleeve.py --out weights/color_par_v4_multi_resnet50_sleeve.pt
+python train/metrics_val.py
+python eval.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
+```
+
+`eval.py`는 직접 라벨링한 `test_image/`와 `test_image/test_labels.csv`(레포에 없음)가 필요하다.
+
+## 모델
+
+서비스는 v4를 쓴다. 자체 사진 15장(남 9, 여 6) 기준 정답 수와 속성 평균이다.
 
 <table>
 <tr>
 <td>
 
-| 버전 | 데이터 | 성별 | 상의 | 하의 | 소매 | 평균 |
-| :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| v1 | Market | 11/15 | 8/15 | 11/15 | – | 0.6667 |
-| v2 | PETA | 14/15 | 7/15 | 13/15 | – | 0.7556 |
-| v3 | PETA+Market | 13/15 | 8/15 | 15/15 | – | 0.8000 |
-| **v4** | PETA+Market | 13/15 | **12/15** | 13/15 | 15/15 | **0.8833** |
-| v5 | PETA+Market | 12/15 | 10/15 | 13/15 | 15/15 | 0.8333 |
+| 버전 | 성별 | 상의 | 하의 | 소매 | 평균 |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| v1 | 11/15 | 8/15 | 11/15 | – | 0.6667 |
+| v2 | 14/15 | 7/15 | 13/15 | – | 0.7556 |
+| v3 | 13/15 | 8/15 | 15/15 | – | 0.8000 |
+| **v4** | 13/15 | **12/15** | 13/15 | 15/15 | **0.8833** |
+| v5 | 12/15 | 10/15 | 13/15 | 15/15 | 0.8333 |
 
-v4부터 소매 헤드가 있고, v5는 v4에 증강과<br>샘플러를 더했다. Jetson 서비스는 v4를 쓴다.
+v4 검증셋(3,359장) 정확도: 성별 0.8815,<br>상의 0.7264, 하의 0.7210, 소매 0.9574.
 
 </td>
 <td><img src="results/summary/test15.png" alt="그림 1" width="520"></td>
 </tr>
 </table>
 
-### v4 검증셋 (3,359장)
-
-<table>
-<tr>
-<td>
-
-| 속성 | 정확도 | top-2 |
-| :--- | ---: | ---: |
-| 성별 | 0.8815 | – |
-| 상의색 | 0.7264 | 0.8604 |
-| 하의색 | 0.7210 | 0.8776 |
-| 소매 | 0.9574 | – |
-| 4속성 평균 | 0.8216 | – |
-| 4속성 모두 정답 | 0.4701 | – |
-
-</td>
-<td><img src="results/summary/v4_confusion.png" alt="그림 2" width="620"></td>
-</tr>
-</table>
-
-- 상의 gray는 568장 중 126장을 black, 104장을 white로 예측했다.
-
 ## 기타
 
-- 학습된 가중치(v1–v5 `.pt`, v3·v4 `.onnx`)와 Jetson 서비스용 `yolo11s.onnx`는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
-- 버전별 학습 곡선과 클래스별 지표는 [로그](docs/experiment-log.md)에 있다.
+- 가중치(v1–v5 `.pt`, v3·v4 `.onnx`)와 `yolo11s.onnx`는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
+- 매칭 문턱·전신 조건·소매 문턱을 정한 근거와 학습 곡선, 혼동 행렬은 [로그](docs/service-log.md)에 있다.
 
 ## Contributors
 
