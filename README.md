@@ -41,7 +41,7 @@ flowchart LR
 1. 카메라별 최신 프레임을 모아 YOLO11s로 한 번에 사람을 검출한다.
 2. PAR(v4)로 4속성을 인식한다. 같은 사람은 결과를 12프레임 동안 재사용하고, 그 뒤에 다시 인식한다.
 3. 박스 모양으로 전신이 보인다고 판정된 사람 중, 서버의 검색 대상(인상착의)과 점수 0.25 이상으로 맞는 사람을 후보로 고른다.
-4. 사람(트랙)마다 2초 동안 점수·크기·선명도로 가장 좋은 사진 1장을 골라 업로드하고 후보 이벤트를 등록한다.
+4. 사람(트랙)마다 2초 동안 점수·크기·선명도로 가장 좋은 crop을 골라, 그 프레임 전체와 crop을 업로드하고 후보 이벤트를 등록한다.
 
 | 폴더 | 내용 |
 | --- | --- |
@@ -79,7 +79,8 @@ python3 edge/scripts/prepare.py
 
 - `edge/.env.example`을 `edge/.env`로 복사하고(`chmod 600`) RTSP·RabbitMQ 계정과 서버 주소
   (`YOPAR_API_BASE`, `YOPAR_MQ_HOST`)를 채운다. `YOPAR_MQ_PORT`, `YOPAR_MQ_VHOST`는 비우면 5672, `/`이다.
-- 디바이스 인증키를 `edge/devicekey.txt`에 한 줄로 넣는다(실행 중 교체해도 반영된다).
+- 디바이스 인증키를 `edge/devicekey.txt`에 한 줄로 넣는다(실행 중 교체해도 반영된다). `.env`의
+  `YOPAR_DEVICE_KEY`를 채우면 그 값이 파일보다 먼저 쓰인다.
 - 카메라 서버 주소 `PI5_IP`(`edge/scripts/capture_core.py`)와 모니터링 PC 주소 `PC_IP`
   (`edge/scripts/jetson_par_sender.py`)는 코드 상수라 직접 채운다.
 

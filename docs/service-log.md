@@ -50,15 +50,16 @@ measure; followed by the attribute model it deploys. The
   are compiled for the GPU they were built on and cannot be copied to another
   device.
 - **Memory.** CUDA arena `kSameAsRequested`, no maximum cuDNN workspace, CPU
-  memory arena off, optional GPU memory limit `PAR_GPU_MEM_MB` (0 = none;
-  320 is the value suggested by the CPU warning). Reason: with shared RAM the
+  memory arena off, optional GPU memory limit for PAR `PAR_GPU_MEM_MB`
+  (0 = none; 320 is the value suggested by the CPU warning; YOLO has no
+  limit). Reason: with shared RAM the
   default arena can make CUBLAS allocations fail *(recorded)*.
 - **Warm-up.** Every batch size of both models is run once at start
   (`warmup`), so the first frames do not pay the engine build or load.
 
 ## 2. TensorRT fp16 check (`scripts/prepare.py`)
 
-Run once per device before the service; `--check` skips the build.
+Run once per device before the service; `--check` skips steps 1 and 2.
 
 1. **RAM guard.** If the available RAM (`free -m`) is below 3000 MB it warns and
    asks; without a terminal it stops. Reason: with too little memory TensorRT
@@ -66,13 +67,16 @@ Run once per device before the service; `--check` skips the build.
 2. **Build.** Both models, all batch sizes.
 3. **YOLO check.** TensorRT fp16 and CUDA fp32 on the sample image
    `edge/samples/bus.jpg`, for which `prepare.py` prints 4 persons as the
-   expected count: fp16 is accepted when both
-   find the same number of persons and every box has IoU ≥ 0.90 with its
-   closest counterpart.
-4. **PAR check.** On up to 8 person crops: fp16 is accepted when no head
+   expected count: fp16 is accepted when both find at least one person, the
+   same number of persons, and every fp32 box has IoU ≥ 0.90 with its closest
+   fp16 box.
+4. **PAR check.** On 8 person crops (the detected persons, repeated to fill
+   8; with no person the check is skipped and PAR uses `cuda`): fp16 is
+   accepted when no head
    changes its top label and no match score crosses the matching threshold
    (0.25) for the query male / white upper / black lower / short sleeve.
-5. **Speed.** Each batch size, 20 calls, TensorRT and CUDA; printed and written
+5. **Speed.** Each batch size, 20 calls, TensorRT and CUDA (PAR only when a
+   person was detected); printed and written
    to `output/prepare_report.txt`. No result of this benchmark is kept in the
    repository.
 6. **Verdict.** `models/provider_verdict.json` holds `trt` or `cuda` per model;
@@ -85,7 +89,8 @@ missing.
 
 - **One YOLO call for all cameras.** Frames of the cameras with a new frame are
   stacked into one batch (at most 4), so the GPU is called once per loop
-  instead of once per camera.
+  instead of once per camera. The camera the batch starts from moves by one
+  every loop, so with more than 4 cameras open none is left out.
 - **Fixed batch sizes.** YOLO uses batch sizes 1, 2, 4 and PAR 1, 2, 4, 8; a
   batch is padded to the next size and the padded outputs are dropped. Reason:
   TensorRT builds a separate engine per batch size; fixed sizes also avoid
@@ -104,8 +109,8 @@ missing.
 - Per camera, each detected box is matched to a remembered box with IoU above
   0.5 (`PAR_CACHE_IOU`); if the remembered attributes are at most 12 frames old
   (`PAR_CACHE_TTL`) they are reused instead of running PAR; older attributes
-  are computed again. An entry is dropped 36 frames (3 × TTL) after its
-  attributes were last computed. Reason: clothing does not change between
+  are computed again. An entry is dropped when its attributes are more than
+  36 frames (3 × TTL) old. Reason: clothing does not change between
   frames, and re-running after the TTL corrects detection jitter. The comment
   in `capture_core.py` calls this the largest optimization in that file and
   expects PAR calls to drop to about 1/TTL while a person stays in view
@@ -164,10 +169,12 @@ recalibration of the probabilities was not validated *(recorded)*.
 - With four attributes the precision stays near 52% even at its optimum, since
   a per-attribute accuracy of about 85% is multiplied four times
   (0.85⁴ ≈ 0.52) *(recorded)*.
-- For each search target, tracked persons with a score ≥ 0.25 that pass the
-  full-body gate are ranked, and the top 3 are passed on for sending.
-- A target is active when it is in the server's search-target list and assigned
-  to the camera; `searchStart`/`searchEnd` are not used, since that window
+- For each case (a case can hold several search targets), the tracked persons
+  of a frame that reach a score ≥ 0.25 for one of its targets and pass the
+  full-body gate are ranked by their highest score, and the top 3 are passed
+  on for sending.
+- A target is active when it is in the server's search-target list, assigned
+  to the camera and its text gives at least one attribute; `searchStart`/`searchEnd` are not used, since that window
   belongs to the recorded-video system. Only assigned cameras are searched,
   because the server rejects candidates from other cameras
   (`422 CAMERA_NOT_SELECTED`).
@@ -177,12 +184,12 @@ recalibration of the probabilities was not validated *(recorded)*.
 
 - **One event per track.** A person standing for 5 minutes gives thousands of
   matching frames *(recorded)*; each track keeps its best crop over a 2 s window
-  (`BEST_WINDOW_SEC`) and is sent once (`REFRESH_SEC = 0`); a track seen again
-  after 30 s is a new event (`TRACK_FORGET_SEC`).
+  (`BEST_WINDOW_SEC`) and is sent once (`REFRESH_SEC = 0`); a track matched
+  again after 30 s without a match is a new event (`TRACK_FORGET_SEC`).
 - **Best crop.** Quality = score × 0.45 + size × 0.2 + min(1, sharpness / 900) ×
   0.35, with size = min(1, box height / (0.5 × frame height)). Sharpness is the
-  variance of the Laplacian on the crop scaled to a long side of 160 px, so that
-  it does not grow with the crop size. Reason: blurred crops with a high score
+  variance of the Laplacian on the crop, scaled down to a long side of 160 px
+  when it is larger, so that it does not grow with the crop size. Reason: blurred crops with a high score
   were chosen over sharp ones. On the 79 crops sharpness varies up to 12×, has a
   correlation of −0.25 with the box height, and has median 849, 10th percentile
   517 and 90th percentile 1413 *(recorded)*.
@@ -192,11 +199,12 @@ recalibration of the probabilities was not validated *(recorded)*.
   that heads and feet are not cut; the reported box stays the detected box.
 - **Rate and queue.** Sends from one camera are at least 1 s apart
   (`MIN_SEND_GAP_SEC`); the send queue holds 16 items because they hold images.
-- **Upload.** Upload URLs from the server → PUT of the JPEG (quality 85) to the
-  presigned URL → candidate event, retried after 1, 2, 4 and 8 s with the same
-  event id. Registering the event is retried for 429, 500, 502, 503 and 504; a
-  failed image PUT is retried for any status; an exception (for example a
-  timeout) is not retried.
+- **Upload.** Upload URLs from the server → PUT of two JPEGs (quality 85) to
+  the presigned URLs, the whole frame and the crop of each person → candidate
+  event, retried after 1, 2, 4 and 8 s with the same event id. The upload-URL
+  request and the event registration are retried for status 429, 500, 502,
+  503 and 504; a failed image PUT is retried for any status; an exception (for
+  example a timeout) is not retried.
 - **Event ids** (`{cameraCode}-{YYYYMMDD}-{seq:06d}`) are saved to
   `runtime/event_seq.json` after every event. Saving every 20 events let a
   stopped process reuse ids and caused `409 EVENT_ID_CONFLICT` *(recorded)*.
@@ -224,19 +232,23 @@ recalibration of the probabilities was not validated *(recorded)*.
 ## 10. Server synchronisation
 
 - **Polling** every 5 s with `If-None-Match` (an unchanged list costs a 304);
-  back-off 1, 2, 4, 8, 15 s after errors; after 5 authentication failures the
-  interval becomes 30 s.
-- **RabbitMQ** (`mq_listener.py`) is used to react at once: a message triggers
-  a full resynchronisation, which must succeed before the message is
-  acknowledged (otherwise it is re-queued and the listener waits 2 s); repeated command ids are
-  ignored (last 512). Without RabbitMQ the service works by polling alone.
+  back-off 1, 2, 4, 8, 15 s after server errors and failed requests;
+  authentication failures (401, 403) keep the 5 s interval, and from the 5th
+  one it becomes 30 s.
+- **RabbitMQ** (`mq_listener.py`) is used to react at once: a message starts
+  the next poll without waiting for the interval; a poll that succeeds (a 304
+  counts) after the message arrived is required before the message is
+  acknowledged (otherwise it is re-queued and the
+  listener waits 2 s); repeated command ids are ignored (last 512). Without RabbitMQ the service works by polling alone.
 - **Device key** in the `X-Device-Key` header, from `YOPAR_DEVICE_KEY` or
   `devicekey.txt`; the file is read again when it changes, so the key can be
   replaced without a restart.
 
 ## 11. Guards and diagnostics
 
-- **One instance.** `run_yopar.sh` refuses to start a second instance. Reason:
+- **One instance.** If the service is already running, `run_yopar.sh` asks
+  whether to stop it; it waits up to 10 s for the old one to exit, kills it
+  if it is still running, and then starts. Reason:
   when onnxruntime cannot get the GPU it falls back to the CPU without an error,
   and two instances at once are the most frequent cause *(recorded)*.
 - **CPU warning.** After warm-up, if neither TensorRT nor CUDA is active, a
@@ -251,9 +263,10 @@ recalibration of the probabilities was not validated *(recorded)*.
 The service uses `color_par_v4_multi_resnet50_sleeve.onnx` (v4). Versions v1–v5
 were trained with `train/`; the kept scripts (v1, v2, v4, v5) use a 256×128
 input, an ImageNet-pretrained backbone, Adam (learning rate 3e-4, weight decay
-1e-4), batch size 64, 10% of the data for validation with `random.Random(0)`
-(v1 by image, v2–v5 by person) and keep the epoch with the best mean
-validation accuracy.
+1e-4), batch size 64, a validation part drawn with `random.Random(0)` (v1: 10%
+of the images; v2, v4, v5: the images of 10% of the persons, which is 8.5% of
+the images for v2 and 10.7% for v5, see L-a) and keep the epoch with the best mean validation
+accuracy.
 
 | version | data | backbone | heads | epochs | notes |
 | --- | --- | --- | --- | --- | --- |
@@ -261,7 +274,7 @@ validation accuracy.
 | v2 | PETA | resnet50 | gender, upper (11), lower (11) | 25 | class-weighted color losses |
 | v3 | PETA + Market | resnet50 (also `swin_t`) | gender, upper, lower | 25 | script not kept |
 | v4 | PETA + Market | resnet50 | as v3 + sleeve (2) | 25 | class-weighted color and sleeve losses |
-| v5 | PETA + Market | resnet50 | as v4 | 40 | + ColorJitter, RandomErasing, weighted sampler, cosine schedule |
+| v5 | PETA + Market | resnet50 | as v4 | 40 | class weights as in v4 but square-rooted; + ColorJitter, RandomErasing, weighted sampler, cosine schedule |
 
 **L-a Data split per training run** (`results/summary/tables.md`)
 
@@ -283,8 +296,10 @@ validation accuracy.
 | v3 (swin_t) | 0.786 | 17 | 0.864 | 0.751 | 0.744 | – |
 | v5 | 0.832 | 40 | 0.888 | 0.736 | 0.740 | 0.963 |
 
-The validation parts differ between versions (L-a); v2 prints the same mean at
-epochs 20 and 25, so the saved epoch is not known from the log.
+The validation parts differ between versions (L-a). The printed mean is over
+3 heads for v1–v3 and over 4 heads, sleeve included, for v5; the same holds
+for `results/summary/val_curves.png`. v2 prints the same mean at epochs 20
+and 25, so the saved epoch is not known from the log.
 
 **L-c v4 on the validation split (3359 images)** (`results/summary/tables.md`)
 
@@ -340,8 +355,10 @@ epochs 20 and 25, so the saved epoch is not known from the log.
 | v5 | v4 + strong augmentation/sampler | 12/15 | 10/15 | 13/15 | 15/15 | 4 | 0.8333 |
 
 - `eval.py` crops each photo to the largest person box of `yolo11n.pt`
-  (confidence 0.25). The 15 photos (9 men, 6 women) are not in the repository.
+  (confidence 0.25); a photo without a detected person is used whole. The 15 photos (9 men, 6 women) are not in the repository.
 - v4 has the highest mean (0.8833) and the highest upper-color count (12/15).
+- The v3 row does not record whether the resnet50 or the `swin_t` run was
+  tested.
 - On the v4 validation split the upper color gray has a recall of 0.4489; 126
   of its 568 images are predicted black and 104 white.
 

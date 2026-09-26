@@ -89,7 +89,7 @@ class PETAColor(Dataset):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--backbone", default="resnet50")
-    ap.add_argument("--out", default="weights/color_par_peta.pt")
+    ap.add_argument("--out", default="weights/color_par_v2_peta_resnet50.pt")
     ap.add_argument("--epochs", type=int, default=25)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -99,7 +99,7 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     items = build_items()
-    print(f"[peta] 학습가능 이미지 {len(items)} / device {device}")
+    print(f"[peta] 학습대상 이미지 {len(items)} / device {device}")
     if not items:
         print("PETA 데이터를 못 찾음. data/PETA dataset/ 확인.")
         return

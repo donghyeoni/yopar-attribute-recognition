@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
 import struct
 import sys
@@ -91,11 +92,15 @@ def _nearest_color_before(t, pos):
     return best
 
 
+_FEMALE_RE = re.compile(r"\b(?:female|woman|women)\b|여자|여성|(?<![가-힣])여(?![가-힣])")
+_MALE_RE = re.compile(r"\b(?:male|man|men)\b|남자|남성|(?<![가-힣])남(?![가-힣])")
+
+
 def parse_query(text):
     t = text.lower()
-    if any(k in t for k in ("female", "woman", "women", "여자", "여성", "여")):
+    if _FEMALE_RE.search(t):
         g = 1
-    elif any(k in t for k in ("male", "man", "men", "남자", "남성", "남")):
+    elif _MALE_RE.search(t):
         g = 0
     else:
         g = None
@@ -321,6 +326,7 @@ def main():
     skipped_total = 0
     skip_reasons = {}
     max_batch = YOLO_BUCKETS[-1]
+    rr = 0
 
     if FULLBODY_ONLY:
         print(f"[gate] 전신만 캡처 — 경계여백 {FULLBODY_EDGE_MARGIN}px, "
@@ -343,7 +349,10 @@ def main():
                 continue
 
             batch = []
-            for path, cam in list(pool.cams.items()):
+            order = list(pool.cams.items())
+            start = rr % len(order)
+            rr += 1
+            for path, cam in order[start:] + order[:start]:
                 stt = pool.state[path]
                 frame, count = cam.snapshot()
                 if frame is None or count == stt["last"]:

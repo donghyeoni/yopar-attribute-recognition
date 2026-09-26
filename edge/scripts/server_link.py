@@ -12,6 +12,8 @@ import requests
 
 import server_config as cfg
 
+_RETRY_STATUS = (429, 500, 502, 503, 504)
+
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -313,19 +315,20 @@ class DetectionReporter(threading.Thread):
             self._forget(now)
             for p in persons:
                 key = (case_id, camera_path, p["track_id"])
+                st = self._tracks.get(key)
+                if st is not None:
+                    st["seen"] = now
                 sharp = self.sharpness(p.get("crop"))
                 if cfg.MIN_SHARPNESS > 0 and sharp < cfg.MIN_SHARPNESS:
                     self.blurry_skipped += 1
                     continue
                 q = self._quality(p["score"], p["box"], frame_h, sharp)
-                st = self._tracks.get(key)
                 if st is None:
                     self._tracks[key] = {"best_q": q, "best": p, "frame": frame,
                                          "opened": now, "seen": now,
                                          "sent_at": None,
                                          "detected_at": detected_at}
                     continue
-                st["seen"] = now
                 if st["sent_at"] is not None:
                     if cfg.REFRESH_SEC > 0 and now - st["sent_at"] >= cfg.REFRESH_SEC:
                         st.update(best_q=q, best=p, frame=frame, opened=now,
@@ -389,9 +392,9 @@ class DetectionReporter(threading.Thread):
         r = requests.post(_url(cfg.UPLOAD_URLS_PATH), headers=_headers(True),
                           data=json.dumps(body), timeout=cfg.API_TIMEOUT)
         if r.status_code not in (200, 201):
-            return None, f"upload-urls HTTP {r.status_code} {r.text[:160]}"
+            return None, f"upload-urls HTTP {r.status_code} {r.text[:160]}", r.status_code
         data = r.json()
-        return (data.get("data") or data), None
+        return (data.get("data") or data), None, r.status_code
 
     def _put_image(self, upload_url, content_type, blob):
         r = requests.put(upload_url, data=blob,
@@ -427,11 +430,10 @@ class DetectionReporter(threading.Thread):
         if not camera_code:
             return False, False, f"cameraCode 매핑 없음({cam_path})"
 
-        urls, err = self._request_upload_urls(case_id, camera_code, event_id,
-                                              persons)
+        urls, err, status = self._request_upload_urls(case_id, camera_code,
+                                                      event_id, persons)
         if err:
-            retry = any(s in err for s in ("429", "500", "502", "503", "504"))
-            return False, retry, err
+            return False, status in _RETRY_STATUS, err
 
         frame_up = urls.get("frame") or {}
         by_track = {d.get("trackId"): d for d in (urls.get("detections") or [])}
@@ -463,8 +465,7 @@ class DetectionReporter(threading.Thread):
         if r.status_code in (404, 422) and self.sync is not None:
             self.sync.refresh_now()
             return False, False, f"HTTP {r.status_code} 재동기화 요청"
-        retry = r.status_code in (429, 500, 502, 503, 504)
-        return False, retry, f"candidate-events HTTP {r.status_code} {r.text[:160]}"
+        return False, r.status_code in _RETRY_STATUS, f"candidate-events HTTP {r.status_code} {r.text[:160]}"
 
     def _archive(self, case_id, cam_path, event_id, detected_at, persons,
                  frame, reason):

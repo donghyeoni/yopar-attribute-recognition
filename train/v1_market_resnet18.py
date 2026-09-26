@@ -85,7 +85,7 @@ def main():
     ap.add_argument("--root", default="data/Market-1501-v15.09.15")
     ap.add_argument("--ann", default="data/Market-1501_Attribute/market_attribute.mat")
     ap.add_argument("--backbone", default="resnet18")
-    ap.add_argument("--out", default="weights/color_par.pt")
+    ap.add_argument("--out", default="weights/color_par_v1_market_resnet18.pt")
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--lr", type=float, default=3e-4)

@@ -128,6 +128,8 @@ def speed(img, crops):
             frames = [img] * n
             bench(lambda: y.detect(frames), n, f"batch{n}")
         del y
+    if not crops:
+        return
     for mode in ("trt", "cuda"):
         print(f"[PAR {mode}]", flush=True)
         p = build_par(mode)
@@ -164,12 +166,17 @@ def main():
             print(f"  {what} 엔진 준비 완료 {time.time() - t0:.0f}s", flush=True)
             del m
 
-    boxes = build_yolo("trt" if not check_only else "trt").detect([img])[0]
+    boxes = build_yolo("trt").detect([img])[0]
     print(f"\n샘플 bus.jpg 검출 {len(boxes)}명 (정답 4명)", flush=True)
     crops = crops_from(img, boxes, max(J.PAR_BUCKETS))
 
     yolo_ok, yolo_why = compare_yolo(img)
-    par_ok, par_why = compare_par(crops)
+    if crops:
+        par_ok, par_why = compare_par(crops)
+    else:
+        print("  ⚠ 검출된 사람이 없어 PAR 비교를 못 한다. 안전하게 fp32(cuda)로 간다.",
+              flush=True)
+        par_ok, par_why = False, "PAR 비교용 사람 0명"
     speed(img, crops)
 
     hr("결론")
@@ -190,7 +197,7 @@ def main():
     print(f"  전체 기록: {LOG}", flush=True)
     print("  이 판정은 jetson_par_sender.py 가 시작할 때 자동으로 읽는다.\n"
           "  손댈 것 없이 그냥 실행하면 된다:\n"
-          "      python3 ~/project/service/scripts/jetson_par_sender.py", flush=True)
+          f"      bash {os.path.join(ROOT, 'run_yopar.sh')}", flush=True)
     sys.stdout.flush()
     os._exit(0)
 

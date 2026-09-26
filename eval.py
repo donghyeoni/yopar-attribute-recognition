@@ -49,11 +49,9 @@ def main():
     ap.add_argument("--csv", default="test_image/test_labels.csv")
     ap.add_argument("--weights", required=True)
     ap.add_argument("--yolo", default="yolo11n.pt")
-    ap.add_argument("--out", default="eval_out")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    os.makedirs(args.out, exist_ok=True)
 
     ck = torch.load(args.weights, map_location="cpu")
     GEN, UP, LO = ck["genders"], ck["upper_colors"], ck["lower_colors"]
@@ -101,6 +99,9 @@ def main():
             ms = pred[3] == true[3]; cs += ms; line += "S" if ms else "."
         print(line)
 
+    if not tot:
+        print("  -> 평가할 사진이 없다.")
+        return
     print(f"  -> gender {cg/tot:.2f}  upper {cu/tot:.2f}  lower {cd/tot:.2f}"
           + (f"  sleeve {cs/tot:.2f}" if has_slv_gt else "") + f"  (n={tot})")
 
