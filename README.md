@@ -51,8 +51,6 @@ flowchart LR
 
 ## 사용 방법
 
-### Jetson 서비스
-
 **1. 설치.** JetPack에 포함된 `cv2`, `numpy`, `requests`는 그대로 쓰고, 나머지만 설치한다.
 `onnxruntime-gpu`는 Jetson(aarch64)용 wheel이 필요하다. 일반 wheel은 GPU 없이 CPU로만 돈다.
 
@@ -88,46 +86,12 @@ python3 edge/scripts/prepare.py
 bash edge/run_yopar.sh
 ```
 
-### 모델 학습·평가
-
-Market-1501, Market-1501_Attribute, PETA를 `data/` 아래에 두고 레포 루트에서 실행한다.
-
-```bash
-pip install -r requirements.txt
-python train/v4_multi_resnet50_sleeve.py --out weights/color_par_v4_multi_resnet50_sleeve.pt
-python train/metrics_val.py
-python eval.py --weights weights/color_par_v4_multi_resnet50_sleeve.pt
-```
-
-`eval.py`는 직접 라벨링한 `test_image/`와 `test_image/test_labels.csv`(레포에 없음)가 필요하다.
-
-## 모델
-
-서비스는 v4를 쓴다. 자체 사진 15장(남 9, 여 6) 기준 정답 수와 속성 평균이다.
-
-<table>
-<tr>
-<td>
-
-| 버전 | 성별 | 상의 | 하의 | 소매 | 평균 |
-| :--- | ---: | ---: | ---: | ---: | ---: |
-| v1 | 11/15 | 8/15 | 11/15 | – | 0.6667 |
-| v2 | 14/15 | 7/15 | 13/15 | – | 0.7556 |
-| v3 | 13/15 | 8/15 | 15/15 | – | 0.8000 |
-| **v4** | 13/15 | **12/15** | 13/15 | 15/15 | **0.8833** |
-| v5 | 12/15 | 10/15 | 13/15 | 15/15 | 0.8333 |
-
-v4 검증셋(3,359장) 정확도: 성별 0.8815,<br>상의 0.7264, 하의 0.7210, 소매 0.9574.
-
-</td>
-<td><img src="results/summary/test15.png" alt="그림 1" width="520"></td>
-</tr>
-</table>
-
 ## 기타
 
-- 가중치(v1–v5 `.pt`, v3·v4 `.onnx`)와 `yolo11s.onnx`는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
-- 매칭 문턱·전신 조건·소매 문턱을 정한 근거와 학습 곡선, 혼동 행렬은 [로그](docs/service-log.md)에 있다.
+- PAR 모델은 Market-1501과 PETA 데이터셋으로 학습했고, 이 데이터셋의 검증 분할과 자체 사진 15장으로 평가했다.
+- 가중치는 v1–v5 다섯 버전이 있고, 그중 자체 사진 15장 기준 성능이 가장 좋은 v4를 서비스에 쓴다.
+  가중치와 `yolo11s.onnx`는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
+- 서비스를 위해 한 조치·최적화와 그 근거, 버전별 모델 결과는 [로그](docs/service-log.md)에 있다.
 
 ## Contributors
 
