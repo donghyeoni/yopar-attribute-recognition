@@ -1,277 +1,133 @@
-# Service Log
+# 서비스 개발 기록
 
-What the YOPAR real-time service does to run four cameras on a Jetson Orin
-Nano, with the reason and, where one was recorded, the measurement behind each
-measure; followed by the attribute model it deploys. The
-[README](../README.md) gives the usage and a summary.
+Jetson Orin Nano 한 대로 카메라 4대를 실시간 처리하기 위해 한 조치와 그 결과,
+그리고 서비스에 쓴 속성 인식 모델의 결과를 정리한다. 결과와 근거의 수치는 개발
+중에 실측한 값이다.
 
-## Conventions
+**처리 속도: 초기 9fps에서 최종 22fps.**
 
-- **Settings** are the constants in the code (`edge/scripts/`, `train/`),
-  given with the file where they are defined.
-- **Recorded measurements** are values measured by the authors during
-  development; each one is marked *(recorded)*.
-- **Model results** come from the files under `results/`;
-  `tools/summarize.py` writes `results/summary/tables.md`, and the tables in
-  the last section are copied from it unchanged. Values from training logs
-  are shown as printed (3 decimals), other values with 4 decimals.
+## 1. PyTorch 제거
 
-## Target and pipeline
+- **문제:** CPU와 GPU가 RAM 7.4GB를 함께 써서 메모리가 부족했다.
+- **조치:** 기기에서 PyTorch를 쓰지 않고 YOLO와 PAR을 ONNX Runtime으로 돌렸다.
+  YOLO 전·후처리(letterbox, 출력 디코딩, NMS)는 NumPy와 OpenCV로 직접 구현했다.
+- **결과:** CUDA 컨텍스트 하나, 약 860MB를 줄였다. 가장 큰 메모리 절약이었다.
 
-- **Device.** Jetson Orin Nano; the CPU and the GPU share 7.4 GB of RAM
-  *(recorded)*.
-- **Input.** Four RTSP streams (`camera-01` … `camera-04`) from a Raspberry Pi 5
-  media server on port 8554 (`PI5_IP`, `RTSP_PORT` in `capture_core.py`).
-- **Per loop.** The newest frame of each camera → one batched YOLO11s person
-  detection → attributes (gender, upper color, lower color, sleeve) for the
-  person crops → match against the search targets of the central server →
-  evidence upload and candidate event for matched persons
-  (`jetson_par_sender.py`, `server_link.py`).
-- **Frame rate.** 9 fps at first, 22 fps in the end *(recorded)*.
+## 2. TensorRT fp16 적용과 검증
 
-## 1. Inference runtime
+- **문제:** fp16은 빠르지만 결과가 fp32와 달라질 수 있다.
+- **조치:** `prepare.py`가 기기마다 TensorRT 엔진을 만들고, 샘플 이미지에서 fp16과
+  fp32의 결과를 비교해 같을 때만 fp16을 쓰도록 모델별로 정한다. 만든 엔진은 저장해
+  두고 다음 실행부터 다시 만들지 않는다.
+- **참고:** 가용 RAM이 부족하면 TensorRT가 일부 최적화를 건너뛰어 느린 엔진이
+  만들어져서, 빌드 전에 가용 RAM이 3GB 미만이면 경고한다.
 
-- **No PyTorch on the device.** YOLO and PAR run as ONNX models on onnxruntime;
-  YOLO pre- and post-processing (letterbox, decoding of the person channel of
-  the `(B, 84, 8400)` output, NMS with `cv2.dnn.NMSBoxes`) is written with
-  NumPy and OpenCV (`onnx_yolo.py`). Reason: not loading PyTorch saves one CUDA
-  context, about 860 MB *(recorded)*, which on the shared 7.4 GB is the largest
-  saving *(recorded)*.
-- **Providers.** `trt` = TensorRT (fp16) → CUDA → CPU, `cuda` = CUDA (fp32) →
-  CPU (`_PROV` in `capture_core.py`). A session is created with the first
-  available provider and falls back to the next one on failure. The choice is
-  `FORCE_PROVIDER` if set, else the verdict of `prepare.py`
-  (`models/provider_verdict.json`), else `trt` for both models.
-- **TensorRT engine cache.** fp16 engines are cached in `edge/models/trt_cache/`
-  (a TensorRT timing cache is enabled as well); the first start builds one engine per batch
-  size and takes a few minutes, later starts load them *(recorded)*. The engines
-  are compiled for the GPU they were built on and cannot be copied to another
-  device.
-- **Memory.** CUDA arena `kSameAsRequested`, no maximum cuDNN workspace, CPU
-  memory arena off, optional GPU memory limit for PAR `PAR_GPU_MEM_MB`
-  (0 = none; 320 is the value suggested by the CPU warning; YOLO has no
-  limit). Reason: with shared RAM the
-  default arena can make CUBLAS allocations fail *(recorded)*.
-- **Warm-up.** Every batch size of both models is run once at start
-  (`warmup`), so the first frames do not pay the engine build or load.
+## 3. GPU 메모리 할당
 
-## 2. TensorRT fp16 check (`scripts/prepare.py`)
+- **문제:** 메모리를 함께 쓰는 환경에서 기본 할당 방식으로는 CUBLAS 메모리 할당이
+  실패했다.
+- **조치:** 요청한 만큼만 할당하도록 바꾸고 CPU 메모리 아레나를 껐다.
 
-Run once per device before the service; `--check` skips steps 1 and 2.
+## 4. 배치 처리
 
-1. **RAM guard.** If the available RAM (`free -m`) is below 3000 MB it warns and
-   asks; without a terminal it stops. Reason: with too little memory TensorRT
-   skips tactics and a slower engine is stored in the cache *(recorded)*.
-2. **Build.** Both models, all batch sizes.
-3. **YOLO check.** TensorRT fp16 and CUDA fp32 on the sample image
-   `edge/samples/bus.jpg`, for which `prepare.py` prints 4 persons as the
-   expected count: fp16 is accepted when both find at least one person, the
-   same number of persons, and every fp32 box has IoU ≥ 0.90 with its closest
-   fp16 box.
-4. **PAR check.** On 8 person crops (the detected persons, repeated to fill
-   8; with no person the check is skipped and PAR uses `cuda`): fp16 is
-   accepted when no head
-   changes its top label and no match score crosses the matching threshold
-   (0.25) for the query male / white upper / black lower / short sleeve.
-5. **Speed.** Each batch size, 20 calls, TensorRT and CUDA (PAR only when a
-   person was detected); printed and written
-   to `output/prepare_report.txt`. No result of this benchmark is kept in the
-   repository.
-6. **Verdict.** `models/provider_verdict.json` holds `trt` or `cuda` per model;
-   the service reads it at start.
+- **조치:** 카메라 4대의 프레임을 YOLO 한 번에 넣는다. 배치 크기를 고정해(YOLO 1·2·4,
+  PAR 1·2·4·8) 크기별 TensorRT 엔진을 미리 만들고, 시작할 때 모두 한 번씩 실행해 둔다.
+- **결과:** YOLO 호출이 루프마다 카메라 수만큼에서 한 번으로 줄었고, 실행 중에 엔진을
+  만들거나 메모리를 다시 잡느라 멈추지 않는다.
 
-`edge/samples/bus.jpg` is not in the repository; the script stops when it is
-missing.
+## 5. 전처리 복사 제거
 
-## 3. Batching and pre-processing
+- **조치:** 입력 버퍼를 재사용하고, 픽셀을 모델 입력 배열에 바로 써서 색 변환과
+  축 변환 복사를 없앴다. 정규화도 곱셈과 덧셈 한 번으로 합쳤다.
 
-- **One YOLO call for all cameras.** Frames of the cameras with a new frame are
-  stacked into one batch (at most 4), so the GPU is called once per loop
-  instead of once per camera. The camera the batch starts from moves by one
-  every loop, so with more than 4 cameras open none is left out.
-- **Fixed batch sizes.** YOLO uses batch sizes 1, 2, 4 and PAR 1, 2, 4, 8; a
-  batch is padded to the next size and the padded outputs are dropped. Reason:
-  TensorRT builds a separate engine per batch size; fixed sizes also avoid
-  re-allocation on the CUDA provider *(recorded)*.
-- **Reused buffers.** Input arrays are allocated once per batch size (zeros,
-  so padding never holds inf/NaN); the letterbox canvas is reused.
-- **No extra copies.** BGR pixels are written straight into the CHW input (no
-  `cvtColor` or `transpose` copy); the PAR normalization `(x/255 − mean)/std` is
-  folded into one multiply and one add, done in place.
-- **Detection.** Input 640 (512 is faster but misses distant persons
-  *(recorded)*), confidence 0.35, NMS IoU 0.5, at most 20 detections; boxes
-  narrower than 8 or lower than 16 pixels are dropped before PAR.
+## 6. 속성 결과 재사용
 
-## 4. Attribute cache and PAR budget (`AttrTracker`)
+- **조치:** 같은 사람은 PAR 결과를 12프레임 동안 재사용하고, 한 번에 PAR에 넣는
+  사람은 최대 8명으로 제한했다.
+- **결과:** 사람이 화면에 있는 동안 PAR 호출이 약 1/12로 줄 것으로 예상했다(측정값
+  아님).
 
-- Per camera, each detected box is matched to a remembered box with IoU above
-  0.5 (`PAR_CACHE_IOU`); if the remembered attributes are at most 12 frames old
-  (`PAR_CACHE_TTL`) they are reused instead of running PAR; older attributes
-  are computed again. An entry is dropped when its attributes are more than
-  36 frames (3 × TTL) old. Reason: clothing does not change between
-  frames, and re-running after the TTL corrects detection jitter. PAR calls
-  were expected to drop to about 1/TTL while a person stays in view (an
-  estimate, not a measurement).
-- **Budget.** At most 8 crops per PAR call over all cameras (`PAR_MAX_CROPS`, a
-  latency cap); larger boxes (closer persons) first, cameras taken in turn so
-  that one camera cannot use the whole budget; only cache misses are sent.
-- PAR is not run for a camera that has no search target assigned.
-- The statistics line prints the cache hit rate (1 − crops / persons).
+## 7. 검출 입력 크기
 
-## 5. Full-body gate (`fullbody_reject`)
+- YOLO 입력은 512가 더 빠르지만 먼 사람을 놓쳐서 640으로 유지했다.
 
-Only persons whose whole body is in the picture become candidates. Reason: a
-searcher cannot check the clothing of a half-visible person, and the lower
-color of such a crop is not reliable *(recorded)*.
+## 8. GPU 루프에서 다른 작업 분리
 
-| check | setting | reason / measurement |
-| --- | --- | --- |
-| box within 6 px of the frame border → `cut` | `FULLBODY_EDGE_MARGIN = 6` | most frequent case: the legs are cut when a person passes close to the camera *(recorded)* |
-| height < 120 px → `small` | `FULLBODY_MIN_HEIGHT = 120` | the face is not resolved below this *(recorded)* |
-| width < 70 px → `sliver` | `FULLBODY_MIN_WIDTH = 70` | all 79 labelled full-body crops pass; their smallest width is 71 px *(recorded)* |
-| height/width < 1.8 → `upper` | `FULLBODY_MIN_RATIO = 1.8` | an upper-body-only box has a ratio of 1.0–1.5 *(recorded)* |
-| height/width > 4.5 → `thin` | `FULLBODY_MAX_RATIO = 4.5` | lowered from 5.5, at which vertical strips occluded by walls or door frames passed (a forearm-only crop was judged full-body); 4.5 drops 2 of the 79 crops *(recorded)* |
+- **조치:** 카메라 수신, 모니터링 PC로 영상 전송, 서버 동기화, 이벤트 업로드를 각각
+  별도 스레드로 돌린다. 카메라와 영상 전송은 최신 프레임 하나만 들고 있다.
+- **결과:** 네트워크나 PC가 느려도 GPU 루프가 기다리지 않고, 밀린 프레임을 처리하지
+  않는다.
 
-The 79 crops were checked by eye as full-body; their ranges are height/width
-1.99–5.49, width 71–282 px, height 310–632 px *(recorded)*. The gate uses box
-geometry only; a person occluded inside the frame by a pillar, a car or another
-person can still pass *(recorded)*. Among the top 3 persons at or above the
-matching threshold, those rejected by the gate are drawn with their reason and
-counted per reason instead of being dropped silently.
+## 9. 전신 판정
 
-## 6. Sleeve threshold
+- **문제:** 몸이 잘린 사람은 수색자가 옷을 확인할 수 없고, 하의색도 믿기 어렵다.
+- **조치:** 박스의 위치, 크기, 높이/너비 비율로 전신이 보이는 사람만 후보로 삼는다.
+- **결과:** 비율 상한을 5.5에서 4.5로 낮춰, 벽이나 문틀에 가린 세로 조각(팔만 보이는
+  crop 등)이 걸러졌다. 4.5에서 탈락하는 전신 crop은 79장 중 2장이다.
 
-`sleeve` is reported as `long` only when its probability is at least 0.95
-(`SLEEVE_LONG_MIN`), instead of the larger of the two probabilities. Reason: the
-model over-estimates long sleeves; with the larger probability 32 short sleeves
-were read as long against 3 long as short, and in a track-level 5-fold
-cross-validation the accuracy went from 84.9% to 90.7% with the threshold
-*(recorded)*. The threshold is used for the attribute text shown on the
-screen; the match score uses the probabilities and is not affected, and a
-recalibration of the probabilities was not validated *(recorded)*.
+## 10. 소매 판정
 
-## 7. Matching
+- **문제:** 모델이 긴 소매를 과하게 예측했다. 두 확률 중 큰 쪽을 쓰면 짧은 소매 32건이
+  긴 소매로, 긴 소매 3건이 짧은 소매로 읽혔다.
+- **조치:** 긴 소매 확률이 0.95 이상일 때만 긴 소매로 판정한다.
+- **결과:** 트랙 단위 5-fold 교차검증 정확도 84.9% → 90.7%.
 
-- **Score.** Product of the probabilities of the attributes named in the search
-  target (`score_probs`).
-- **Threshold 0.25** (`MATCH_THRESHOLD`), chosen on the 79 labelled crops with
-  22 real clothing combinations as queries, from a precision/recall curve
-  *(recorded)*:
+## 11. 매칭 기준값
 
-| threshold | precision | recall | F1 |
+- **조치:** 전신 crop 79장과 실제 옷 조합 22개로 precision/recall 곡선을 그려
+  기준값을 골랐다.
+
+| 기준값 | precision | recall | F1 |
 | --- | --- | --- | --- |
 | 0.15 | 51.9% | 65.0% | 0.577 |
-| **0.25** (used) | 56.9% | 62.4% | 0.596 |
+| **0.25** (채택) | 56.9% | 62.4% | 0.596 |
 
-- With four attributes the precision stays near 52% even at its optimum, since
-  a per-attribute accuracy of about 85% is multiplied four times
-  (0.85⁴ ≈ 0.52) *(recorded)*.
-- For each case (a case can hold several search targets), the tracked persons
-  of a frame that reach a score ≥ 0.25 for one of its targets and pass the
-  full-body gate are ranked by their highest score, and the top 3 are passed
-  on for sending.
-- A target is active when it is in the server's search-target list, assigned
-  to the camera and its text gives at least one attribute; `searchStart`/`searchEnd` are not used, since that window
-  belongs to the recorded-video system. Only assigned cameras are searched,
-  because the server rejects candidates from other cameras
-  (`422 CAMERA_NOT_SELECTED`).
-- The search text is parsed in Korean and English (`parse_query`).
+- 속성 4개의 확률을 곱하므로, 속성별 정확도가 약 85%면 precision은 52% 근처
+  (0.85⁴ ≈ 0.52)에 머문다.
 
-## 8. Evidence selection and sending (`server_link.py`, `server_config.py`)
+## 12. 증거 사진 선택
 
-- **One event per track.** A person standing for 5 minutes gives thousands of
-  matching frames *(recorded)*; each track keeps its best crop over a 2 s window
-  (`BEST_WINDOW_SEC`) and is sent once (`REFRESH_SEC = 0`); a track matched
-  again after 30 s without a match is a new event (`TRACK_FORGET_SEC`).
-- **Best crop.** Quality = score × 0.45 + size × 0.2 + min(1, sharpness / 900) ×
-  0.35, with size = min(1, box height / (0.5 × frame height)). Sharpness is the
-  variance of the Laplacian on the crop, scaled down to a long side of 160 px
-  when it is larger, so that it does not grow with the crop size. Reason: blurred crops with a high score
-  were chosen over sharp ones. On the 79 crops sharpness varies up to 12×, has a
-  correlation of −0.25 with the box height, and has median 849, 10th percentile
-  517 and 90th percentile 1413 *(recorded)*.
-- **Blur filter.** Crops with sharpness below 300 (`MIN_SHARPNESS`) are not
-  used; 300 is below the recorded 10th percentile of 517 *(recorded)*.
-- **Crop margin.** 6% of the box on each side is added to the uploaded crop so
-  that heads and feet are not cut; the reported box stays the detected box.
-- **Rate and queue.** Sends from one camera are at least 1 s apart
-  (`MIN_SEND_GAP_SEC`); the send queue holds 16 items because they hold images.
-- **Upload.** Upload URLs from the server → PUT of two JPEGs (quality 85) to
-  the presigned URLs, the whole frame and the crop of each person → candidate
-  event, retried after 1, 2, 4 and 8 s with the same event id. The upload-URL
-  request and the event registration are retried for status 429, 500, 502,
-  503 and 504; a failed image PUT is retried for any status; an exception (for
-  example a timeout) is not retried.
-- **Event ids** (`{cameraCode}-{YYYYMMDD}-{seq:06d}`) are saved to
-  `runtime/event_seq.json` after every event. Saving every 20 events let a
-  stopped process reuse ids and caused `409 EVENT_ID_CONFLICT` *(recorded)*.
-- Evidence of uploads that end with an error response is kept in
-  `output/detections/` (at most 300 events).
+- **문제:** 5분 동안 서 있는 사람은 수천 프레임에서 매칭되고, 점수만 보면 흐린
+  사진이 뽑혔다.
+- **조치:** 사람(트랙)마다 2초 동안 점수, 크기, 선명도로 가장 좋은 장면 하나를 골라
+  한 번만 보낸다. 선명도는 사진 크기의 영향을 없애도록 긴 변이 160px보다 크면 160px로 줄여 계산하고,
+  너무 흐린 사진(300 미만)은 쓰지 않는다.
+- **근거:** 전신 crop 79장에서 선명도는 최대 12배 차이가 났고, 중앙값 849, 하위 10%
+  지점 517이었다.
 
-## 9. Keeping the GPU loop free
+## 13. 이벤트 ID 충돌
 
-- **Camera threads.** One thread per camera keeps only the newest frame
-  (`CAP_PROP_BUFFERSIZE = 1`), retries 3 s after a failed open and 2 s after a
-  lost stream, and uses low-latency RTSP options (TCP, no buffering, no
-  reordering).
-- **Viewer stream.** JPEG encoding and TCP sending to the monitoring PC run in
-  their own thread (`FrameSender`), which keeps only the newest frame per
-  camera; a slow or disconnected PC drops old frames instead of blocking the
-  loop. Frames are scaled to a width of at most 960 and encoded with quality 75.
-- **Server threads.** Target synchronisation and event sending run in their
-  own threads with timeouts of 8 s (API) and 20 s (upload); the service keeps
-  monitoring when the server is down.
-- **Cameras opened on demand.** Only `camera-01` … `camera-04` and the cameras
-  assigned by the server are open (`CameraPool.reconcile`).
-- Console output replaces characters it cannot encode, since an encoding error
-  in a print would stop a thread and the uploads with it *(recorded)*.
+- **문제:** 이벤트 번호를 20건마다 저장해서, 재시작 후 번호가 다시 쓰여
+  `409 EVENT_ID_CONFLICT`가 났다.
+- **조치:** 이벤트마다 번호를 저장한다.
 
-## 10. Server synchronisation
+## 14. 서버 연동
 
-- **Polling** every 5 s with `If-None-Match` (an unchanged list costs a 304);
-  back-off 1, 2, 4, 8, 15 s after server errors and failed requests;
-  authentication failures (401, 403) keep the 5 s interval, and from the 5th
-  one it becomes 30 s.
-- **RabbitMQ** (`mq_listener.py`) is used to react at once: a message starts
-  the next poll without waiting for the interval; a poll that succeeds (a 304
-  counts) after the message arrived is required before the message is
-  acknowledged (otherwise it is re-queued and the
-  listener waits 2 s); repeated command ids are ignored (last 512). Without RabbitMQ the service works by polling alone.
-- **Device key** in the `X-Device-Key` header, from `YOPAR_DEVICE_KEY` or
-  `devicekey.txt`; the file is read again when it changes, so the key can be
-  replaced without a restart.
+- **조치:** 목록이 바뀌지 않으면 서버가 304로 답하는 조건부 폴링과 RabbitMQ 알림을
+  함께 쓴다. RabbitMQ가 없어도 폴링만으로 동작한다.
+- **결과:** 변경은 바로 반영되고, 바뀌지 않은 목록은 다시 받지 않는다. 서버가 멈춰도
+  감시는 계속된다.
 
-## 11. Guards and diagnostics
+## 15. 운영 중 문제 대응
 
-- **One instance.** If the service is already running, `run_yopar.sh` asks
-  whether to stop it; it waits up to 10 s for the old one to exit, kills it
-  if it is still running, and then starts. Reason:
-  when onnxruntime cannot get the GPU it falls back to the CPU without an error,
-  and two instances at once are the most frequent cause *(recorded)*.
-- **CPU warning.** After warm-up, if neither TensorRT nor CUDA is active, a
-  warning with a checklist is printed. On the CPU, PAR takes about 500 ms
-  instead of 4 ms *(recorded)*.
-- **Statistics** every 60 frames: frames per second per camera, persons per
-  frame, cache hit rate, gate rejections per reason (as counted above),
-  synchronisation and upload counters.
+- 서비스 두 개가 동시에 뜨면 GPU를 얻지 못한 쪽이 오류 없이 CPU로 돌았고, 이것이 CPU로
+  떨어지는 가장 흔한 원인이었다. 실행 스크립트는 두 개가 동시에 돌지 않게 한다.
+- CPU에서는 PAR이 4ms 대신 약 500ms 걸려서, 시작 후 GPU를 쓰지 못하면 경고한다.
+- 출력 인코딩 오류로 스레드가 멈추면 업로드도 멈춰서, 출력할 수 없는 문자는 바꿔서
+  출력한다.
 
-## 12. Attribute model
+## 16. 속성 인식 모델
 
-The service uses `color_par_v4_multi_resnet50_sleeve.onnx` (v4). Versions v1–v5
-were trained with `train/`; the kept scripts (v1, v2, v4, v5) use a 256×128
-input, an ImageNet-pretrained backbone, Adam (learning rate 3e-4, weight decay
-1e-4), batch size 64, a validation part drawn with `random.Random(0)` (v1: 10%
-of the images; v2, v4, v5: the images of 10% of the persons, which is 8.5% of
-the images for v2 and 10.7% for v5, see L-a) and keep the epoch with the best mean validation
-accuracy.
+서비스는 v4(`color_par_v4_multi_resnet50_sleeve.onnx`)를 쓴다. 표는
+`results/summary/tables.md`에서 가져왔다.
 
-| version | data | backbone | heads | epochs | notes |
-| --- | --- | --- | --- | --- | --- |
-| v1 | Market-1501 | resnet18 | gender, upper (8), lower (9) | 20 | |
-| v2 | PETA | resnet50 | gender, upper (11), lower (11) | 25 | class-weighted color losses |
-| v3 | PETA + Market | resnet50 (also `swin_t`) | gender, upper, lower | 25 | script not kept |
-| v4 | PETA + Market | resnet50 | as v3 + sleeve (2) | 25 | class-weighted color and sleeve losses |
-| v5 | PETA + Market | resnet50 | as v4 | 40 | class weights as in v4 but square-rooted; + ColorJitter, RandomErasing, weighted sampler, cosine schedule |
+| 버전 | 데이터 | 백본 | 속성 | 에폭 |
+| --- | --- | --- | --- | --- |
+| v1 | Market-1501 | resnet18 | 성별, 상의색(8), 하의색(9) | 20 |
+| v2 | PETA | resnet50 | 성별, 상의색(11), 하의색(11) | 25 |
+| v3 | PETA + Market | resnet50 (`swin_t`도 학습) | 성별, 상의색, 하의색 | 25 |
+| v4 | PETA + Market | resnet50 | v3 + 소매(2) | 25 |
+| v5 | PETA + Market | resnet50 | v4와 같음 | 40 |
 
 **L-a Data split per training run** (`results/summary/tables.md`)
 
@@ -293,10 +149,7 @@ accuracy.
 | v3 (swin_t) | 0.786 | 17 | 0.864 | 0.751 | 0.744 | – |
 | v5 | 0.832 | 40 | 0.888 | 0.736 | 0.740 | 0.963 |
 
-The validation parts differ between versions (L-a). The printed mean is over
-3 heads for v1–v3 and over 4 heads, sleeve included, for v5; the same holds
-for `results/summary/val_curves.png`. v2 prints the same mean at epochs 20
-and 25, so the saved epoch is not known from the log.
+v1–v3의 mean은 속성 3개, v5는 소매를 포함한 4개의 평균이다.
 
 **L-c v4 on the validation split (3359 images)** (`results/summary/tables.md`)
 
@@ -351,18 +204,4 @@ and 25, so the saved epoch is not known from the log.
 | v4 | PETA+Market + sleeve | 13/15 | 12/15 | 13/15 | 15/15 | 4 | 0.8833 |
 | v5 | v4 + strong augmentation/sampler | 12/15 | 10/15 | 13/15 | 15/15 | 4 | 0.8333 |
 
-- `eval.py` crops each photo to the largest person box of `yolo11n.pt`
-  (confidence 0.25); a photo without a detected person is used whole. The 15 photos (9 men, 6 women) are not in the repository.
-- v4 has the highest mean (0.8833) and the highest upper-color count (12/15).
-- The v3 row does not record whether the resnet50 or the `swin_t` run was
-  tested.
-- On the v4 validation split the upper color gray has a recall of 0.4489; 126
-  of its 568 images are predicted black and 104 white.
-
-## Not in the repository
-
-`edge/samples/bus.jpg` (needed by `prepare.py`), `edge/pylibs/` (a local copy
-of onnxruntime; added to the import path when present), the desktop launcher
-that calls `run_yopar.sh`, the monitoring viewer that receives the frame
-stream (`VIEW_PORT = 5006`), the datasets, the 15 test photos and the 79
-labelled crops.
+자체 사진 15장에서 v4가 평균(0.8833)과 상의색(12/15) 모두 가장 높아 서비스에 썼다.
