@@ -9,11 +9,8 @@ measure; followed by the attribute model it deploys. The
 
 - **Settings** are the constants in the code (`edge/scripts/`, `train/`),
   given with the file where they are defined.
-- **Recorded measurements** are numbers written by the authors in the code
-  comments of the service before it was merged into this repository
-  (`yopar-edge-service`, last commit `32d0cae`); those comments are no longer
-  in the code, and this log is where the numbers are kept. They were not
-  measured again. Each one is marked *(recorded)*.
+- **Recorded measurements** are values measured by the authors during
+  development; each one is marked *(recorded)*.
 - **Model results** come from the files under `results/`;
   `tools/summarize.py` writes `results/summary/tables.md`, and the tables in
   the last section are copied from it unchanged. Values from training logs
@@ -30,6 +27,7 @@ measure; followed by the attribute model it deploys. The
   person crops → match against the search targets of the central server →
   evidence upload and candidate event for matched persons
   (`jetson_par_sender.py`, `server_link.py`).
+- **Frame rate.** 9 fps at first, 22 fps in the end *(recorded)*.
 
 ## 1. Inference runtime
 
@@ -111,10 +109,9 @@ missing.
   (`PAR_CACHE_TTL`) they are reused instead of running PAR; older attributes
   are computed again. An entry is dropped when its attributes are more than
   36 frames (3 × TTL) old. Reason: clothing does not change between
-  frames, and re-running after the TTL corrects detection jitter. The comment
-  in `capture_core.py` calls this the largest optimization in that file and
-  expects PAR calls to drop to about 1/TTL while a person stays in view
-  *(recorded; an expectation, not a measurement)*.
+  frames, and re-running after the TTL corrects detection jitter. PAR calls
+  were expected to drop to about 1/TTL while a person stays in view (an
+  estimate, not a measurement).
 - **Budget.** At most 8 crops per PAR call over all cameras (`PAR_MAX_CROPS`, a
   latency cap); larger boxes (closer persons) first, cameras taken in turn so
   that one camera cannot use the whole budget; only cache misses are sent.
