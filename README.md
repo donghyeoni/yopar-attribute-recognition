@@ -40,7 +40,7 @@ flowchart LR
 
 1. 카메라별 최신 프레임을 모아 YOLO11s로 한 번에 사람을 검출한다.
 2. PAR(v4)로 4속성을 인식한다. 같은 사람은 결과를 12프레임 동안 재사용하고, 그 뒤에 다시 인식한다.
-3. 전신이 보이는 사람만, 서버의 검색 대상(인상착의)과 점수 0.25 이상으로 맞으면 후보로 고른다.
+3. 박스 모양으로 전신이 보인다고 판정된 사람 중, 서버의 검색 대상(인상착의)과 점수 0.25 이상으로 맞는 사람을 후보로 고른다.
 4. 사람(트랙)마다 2초 동안 점수·크기·선명도로 가장 좋은 사진 1장을 골라 업로드하고 후보 이벤트를 등록한다.
 
 | 폴더 | 내용 |
@@ -51,8 +51,11 @@ flowchart LR
 
 ## 사용 방법
 
-**1. 설치.** JetPack에 포함된 `cv2`, `numpy`, `requests`는 그대로 쓰고, 나머지만 설치한다.
-`onnxruntime-gpu`는 Jetson(aarch64)용 wheel이 필요하다. 일반 wheel은 GPU 없이 CPU로만 돈다.
+**1. 설치.** JetPack에 포함된 `cv2`, `numpy`, `requests`는 그대로 쓴다.
+
+- `onnxruntime-gpu` 1.24.0은 JetPack 버전에 맞는 Jetson(aarch64)용 wheel을 따로 설치하거나 `edge/pylibs/`에 둔다
+  (`edge/pylibs/`가 있으면 import 경로에 자동으로 추가된다). 일반 wheel은 GPU 없이 CPU로만 돈다.
+- 나머지 패키지는 pip로 설치한다.
 
 ```bash
 pip install -r edge/requirements.txt
@@ -89,7 +92,7 @@ bash edge/run_yopar.sh
 ## 기타
 
 - PAR 모델은 Market-1501과 PETA 데이터셋으로 학습했고, 이 데이터셋의 검증 분할과 자체 사진 15장으로 평가했다.
-- 가중치는 v1–v5 다섯 버전이 있고, 그중 자체 사진 15장 기준 성능이 가장 좋은 v4를 서비스에 쓴다.
+- 가중치는 v1–v5 다섯 버전이 있고, 그중 자체 사진 15장 기준 평균 정확도가 가장 높은 v4를 서비스에 쓴다.
   가중치와 `yolo11s.onnx`는 [Releases](https://github.com/donghyeoni/yopar-attribute-recognition/releases)에 있다.
 - 서비스를 위해 한 조치·최적화와 그 근거, 버전별 모델 결과는 [로그](docs/service-log.md)에 있다.
 

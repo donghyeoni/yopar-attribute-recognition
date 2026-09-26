@@ -52,8 +52,7 @@ measure; followed by the attribute model it deploys. The
 - **Memory.** CUDA arena `kSameAsRequested`, no maximum cuDNN workspace, CPU
   memory arena off, optional GPU memory limit `PAR_GPU_MEM_MB` (0 = none;
   320 is the value suggested by the CPU warning). Reason: with shared RAM the
-  default arena can make CUBLAS allocations fail *(recorded)*. YOLO is loaded
-  before PAR, larger model first, to fragment memory less *(recorded)*.
+  default arena can make CUBLAS allocations fail *(recorded)*.
 - **Warm-up.** Every batch size of both models is run once at start
   (`warmup`), so the first frames do not pay the engine build or load.
 
@@ -66,7 +65,8 @@ Run once per device before the service; `--check` skips the build.
    skips tactics and a slower engine is stored in the cache *(recorded)*.
 2. **Build.** Both models, all batch sizes.
 3. **YOLO check.** TensorRT fp16 and CUDA fp32 on the sample image
-   `edge/samples/bus.jpg` (4 persons *(recorded)*): fp16 is accepted when both
+   `edge/samples/bus.jpg`, for which `prepare.py` prints 4 persons as the
+   expected count: fp16 is accepted when both
    find the same number of persons and every box has IoU ≥ 0.90 with its
    closest counterpart.
 4. **PAR check.** On up to 8 person crops: fp16 is accepted when no head
