@@ -142,7 +142,7 @@ def main():
     val_g = set(groups[:max(1, int(len(groups) * args.val_split))])
     tr = [it for it in items if it[5] not in val_g]
     va = [it for it in items if it[5] in val_g]
-    print(f"[multi+sleeve] train {len(tr)} / val {len(va)} (인물 {len(groups)})")
+    print(f"[multi+sleeve] train {len(tr)} / val {len(va)} (인물 {len(groups)}명)")
 
     H, W = INPUT_HW
     tfm_tr = T.Compose([T.Resize((H, W)), T.RandomHorizontalFlip(),
